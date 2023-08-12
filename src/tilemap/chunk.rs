@@ -48,7 +48,7 @@ impl Chunk {
             tiles,
             image: image.clone(),
             image_handle: images.add(image),
-            dirty: false,
+            dirty: true,
             entity,
         }
     }
@@ -115,14 +115,18 @@ impl Chunk {
     /// Prefer to use request_update() unless absolutely necissary
     pub fn update_texture(&mut self, images: &mut ResMut<Assets<Image>>) {
         self.dirty = false;
-        let mut data = vec![vec![Color::BLACK; CHUNK_SIZE * TILE_SIZE]; CHUNK_SIZE * TILE_SIZE];
+        let mut data = vec![
+            vec![Color::rgba(0.0, 0.0, 0.0, 1.0); CHUNK_SIZE * TILE_SIZE];
+            CHUNK_SIZE * TILE_SIZE
+        ];
         for x in 0..CHUNK_SIZE {
             for y in 0..CHUNK_SIZE {
                 let tile = self.get_tile((x, y)).unwrap();
                 if let Some(tile) = tile {
                     for pixel_x in 0..TILE_SIZE {
                         for pixel_y in 0..TILE_SIZE {
-                            data[x * TILE_SIZE + pixel_x][y * TILE_SIZE + pixel_y] =
+                            data[(CHUNK_SIZE - 1 - y) * TILE_SIZE + pixel_y]
+                                [x * TILE_SIZE + pixel_x] =
                                 tile.get_pixel((pixel_x, pixel_y)).unwrap();
                         }
                     }

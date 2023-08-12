@@ -59,6 +59,32 @@ impl Tilemap {
             self.chunks.get_mut(&loc).expect("Chunk should exist")
         }
     }
+
+    pub fn try_get_chunk(&mut self, loc: (i32, i32)) -> Option<&mut Chunk> {
+        self.chunks.get_mut(&loc)
+    }
+
+    pub fn get_tile(&mut self, loc: (i32, i32)) -> Option<&mut Tile> {
+        let chunk_coords = (loc.0 / CHUNK_SIZE as i32, loc.1 / CHUNK_SIZE as i32);
+
+        if let Some(chunk) = self.try_get_chunk(chunk_coords) {
+            let inner_tile_coords = (
+                loc.0.unsigned_abs() as usize % CHUNK_SIZE,
+                loc.1.unsigned_abs() as usize % CHUNK_SIZE,
+            );
+            return chunk
+                .get_tile(inner_tile_coords)
+                .expect("Tile should be in chunk range");
+        }
+        None
+    }
+
+    pub fn get_chunk_loc(&mut self, tile_loc: (i32, i32)) -> (i32, i32) {
+        (
+            tile_loc.0 / CHUNK_SIZE as i32,
+            tile_loc.1 / CHUNK_SIZE as i32,
+        )
+    }
 }
 
 // Updates all textures for the tiles if they are marked as dirty.

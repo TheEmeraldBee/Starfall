@@ -37,12 +37,22 @@ fn main() {
         // Add Debug Plugins
         .add_plugins((LogDiagnosticsPlugin::default(), FrameTimeDiagnosticsPlugin))
         .add_plugins(TilemapPlugin)
-        // Add the resources
         .add_systems(Startup, start_system)
-        // Add the test system
         .add_systems(Update, test_system)
+        .insert_resource(TestResource {
+            timer: Timer::from_seconds(0.001, TimerMode::Repeating),
+            x: -10 * CHUNK_SIZE as i32,
+            y: -10 * CHUNK_SIZE as i32,
+        })
         // Run the Game
         .run();
+}
+
+#[derive(Resource)]
+pub struct TestResource {
+    timer: Timer,
+    x: i32,
+    y: i32,
 }
 
 fn start_system(
@@ -55,19 +65,9 @@ fn start_system(
     camera_bundle.projection.scaling_mode = ScalingMode::WindowSize(25.6);
     commands.spawn(camera_bundle);
 
-    for x in 0..10 {
-        for y in 0..10 {
+    for x in -10..10 {
+        for y in -10..10 {
             let chunk = tilemap.get_chunk((x, y), &mut images, &mut commands);
-
-            chunk
-                .set_tile(
-                    (5, 5),
-                    Some(Tile::new_fill(Color::WHITE)),
-                    (),
-                    &mut commands,
-                )
-                .unwrap();
-
             chunk.request_update();
         }
     }
@@ -75,17 +75,32 @@ fn start_system(
 
 fn test_system(
     mut tiles: ResMut<Tilemap>,
-    mut images: ResMut<Assets<Image>>,
+    mut resource: ResMut<TestResource>,
     mut commands: Commands,
-    mut chunks: Query<&mut ChunkComponent>,
+    time: Res<Time>,
 ) {
-    for chunk in &mut chunks {
-        let chunk = tiles.get_chunk(chunk.location, &mut images, &mut commands);
+    resource.timer.tick(time.delta());
+    for _ in 0..resource.timer.times_finished_this_tick() {
+        let chunk_loc = tiles.get_chunk_loc((resource.x, resource.y));
+        if let Some(chunk) = tiles.try_get_chunk(chunk_loc) {
+            chunk.request_update();
+            chunk
+                .set_tile(
+                    (
+                        resource.x.unsigned_abs() as usize % CHUNK_SIZE,
+                        resource.y.unsigned_abs() as usize % CHUNK_SIZE,
+                    ),
+                    Some(Tile::new_fill(Color::WHITE)),
+                    (),
+                    &mut commands,
+                )
+                .unwrap();
+        }
 
-        chunk
-            .set_tile((0, 0), Some(Tile::new_fill(Color::BLUE)), (), &mut commands)
-            .unwrap();
-
-        chunk.request_update();
+        resource.x += 1;
+        if resource.x >= 48 {
+            resource.x = 0;
+            resource.y += 1;
+        }
     }
 }

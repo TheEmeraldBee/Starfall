@@ -2,24 +2,19 @@ use bevy::{prelude::*, render::render_resource::Extent3d};
 
 use crate::tilemap::{CHUNK_SIZE, TILE_SIZE};
 
-use super::tile::{Tile, TileComponent};
+use super::tile::Tile;
 
-#[derive(Component)]
-pub struct ChunkComponent {
-    pub location: (i32, i32),
-}
-
+#[derive(Component, Debug, Clone)]
 pub struct Chunk {
     pub location: (i32, i32),
-    pub tiles: Vec<Option<Tile>>,
+    pub tiles: Vec<Option<Entity>>,
     pub image: Image,
     pub image_handle: Handle<Image>,
     pub dirty: bool,
-    pub entity: Entity,
 }
 
 impl Chunk {
-    pub fn new(location: (i32, i32), images: &mut ResMut<Assets<Image>>, entity: Entity) -> Self {
+    pub fn new(location: (i32, i32), images: &mut ResMut<Assets<Image>>) -> Self {
         let mut data = vec![];
         for _ in 0..((CHUNK_SIZE * CHUNK_SIZE) * TILE_SIZE * TILE_SIZE) {
             data.append(&mut Color::rgba(0.0, 0.0, 0.0, 0.0).as_rgba_u8().to_vec());
@@ -49,12 +44,15 @@ impl Chunk {
             image: image.clone(),
             image_handle: images.add(image),
             dirty: true,
-            entity,
         }
     }
 
-    pub fn get_tile(&mut self, location: (usize, usize)) -> anyhow::Result<Option<&mut Tile>> {
-        if location.0 >= CHUNK_SIZE || location.1 >= CHUNK_SIZE {
+    pub fn get_tile(&mut self, location: (i32, i32)) -> anyhow::Result<Option<Entity>> {
+        if location.0 >= CHUNK_SIZE as i32
+            || location.1 >= CHUNK_SIZE as i32
+            || location.0 < 0
+            || location.1 < 0
+        {
             return Err(anyhow!(
                 "Expected tile between 0, 0 and {0}, {0} but got {1}, {2}",
                 CHUNK_SIZE - 1,
@@ -63,57 +61,17 @@ impl Chunk {
             ));
         }
 
-        Ok(self.tiles[location.0 + location.1 * CHUNK_SIZE].as_mut())
-    }
-
-    pub fn set_tile(
-        &mut self,
-        location: (usize, usize),
-        tile: Option<Tile>,
-        additional_components: impl Bundle,
-        commands: &mut Commands,
-    ) -> anyhow::Result<()> {
-        if location.0 >= CHUNK_SIZE || location.1 >= CHUNK_SIZE {
-            return Err(anyhow!(
-                "Expected tile between 0, 0 and {0}, {0} but got {1}, {2}",
-                CHUNK_SIZE - 1,
-                location.0,
-                location.1
-            ));
-        }
-
-        let cur_tile = &mut self.tiles[location.0 + location.1 * CHUNK_SIZE];
-
-        if let Some(cur_tile) = cur_tile {
-            commands
-                .entity(cur_tile.entity.expect("Tile Should be fully initialized"))
-                .despawn_recursive();
-        }
-
-        if let Some(mut tile) = tile {
-            tile.entity = Some(
-                commands
-                    .spawn((
-                        TileComponent {
-                            chunk_loc: self.location,
-                            loc: location,
-                        },
-                        additional_components,
-                    ))
-                    .id(),
-            );
-            *cur_tile = Some(tile);
-        } else {
-            *cur_tile = None;
-        }
-
-        Ok(())
+        Ok(self.tiles[location.0 as usize + location.1 as usize * CHUNK_SIZE])
     }
 
     /// Updates the texture on the tile.
     /// WARNING: Extremely ineffective if used often.
     /// Prefer to use request_update() unless absolutely necissary
-    pub fn update_texture(&mut self, images: &mut ResMut<Assets<Image>>) {
+    pub fn update_texture(
+        &mut self,
+        images: &mut ResMut<Assets<Image>>,
+        tiles: &mut Query<&mut Tile>,
+    ) {
         self.dirty = false;
         let mut data = vec![
             vec![Color::rgba(0.0, 0.0, 0.0, 1.0); CHUNK_SIZE * TILE_SIZE];
@@ -121,13 +79,21 @@ impl Chunk {
         ];
         for x in 0..CHUNK_SIZE {
             for y in 0..CHUNK_SIZE {
-                let tile = self.get_tile((x, y)).unwrap();
+                let tile = self.get_tile((x as i32, y as i32)).unwrap();
+
                 if let Some(tile) = tile {
                     for pixel_x in 0..TILE_SIZE {
                         for pixel_y in 0..TILE_SIZE {
-                            data[(CHUNK_SIZE - 1 - y) * TILE_SIZE + pixel_y]
-                                [x * TILE_SIZE + pixel_x] =
-                                tile.get_pixel((pixel_x, pixel_y)).unwrap();
+                            // Inverse of y * pixels per tile + the current pixel
+                            let pixel_index_y = ((CHUNK_SIZE - 1 - y) * TILE_SIZE) + pixel_y;
+                            // x * pixels per tile + the current pixel
+                            let pixel_index_x = (x * TILE_SIZE) + pixel_x;
+
+                            data[pixel_index_y][pixel_index_x] = tiles
+                                .get_mut(tile)
+                                .expect("Tile Entity Should Exist")
+                                .get_pixel((pixel_x, pixel_y))
+                                .unwrap();
                         }
                     }
                 }
@@ -146,6 +112,7 @@ impl Chunk {
     }
 
     /// Requests a mesh and render update from the system.
+    /// Renders after the update stage.
     pub fn request_update(&mut self) {
         self.dirty = true;
     }

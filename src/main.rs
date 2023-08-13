@@ -38,69 +38,28 @@ fn main() {
         .add_plugins((LogDiagnosticsPlugin::default(), FrameTimeDiagnosticsPlugin))
         .add_plugins(TilemapPlugin)
         .add_systems(Startup, start_system)
-        .add_systems(Update, test_system)
-        .insert_resource(TestResource {
-            timer: Timer::from_seconds(0.001, TimerMode::Repeating),
-            x: -10 * CHUNK_SIZE as i32,
-            y: -10 * CHUNK_SIZE as i32,
-        })
         // Run the Game
         .run();
 }
 
-#[derive(Resource)]
-pub struct TestResource {
-    timer: Timer,
-    x: i32,
-    y: i32,
-}
-
-fn start_system(
-    mut commands: Commands,
-    mut images: ResMut<Assets<Image>>,
-    mut tilemap: ResMut<Tilemap>,
-) {
+fn start_system(mut commands: Commands) {
     let mut camera_bundle = Camera2dBundle::default();
     camera_bundle.projection.viewport_origin = Vec2::new(0.5, 0.5);
     camera_bundle.projection.scaling_mode = ScalingMode::WindowSize(25.6);
+    camera_bundle.projection.scale = -2.0;
     commands.spawn(camera_bundle);
 
-    for x in -10..10 {
-        for y in -10..10 {
-            let chunk = tilemap.get_chunk((x, y), &mut images, &mut commands);
-            chunk.request_update();
+    let mut tilemap = Tilemap::default();
+
+    for x in -128..128 {
+        for y in -128..128 {
+            tilemap.set_tile((x, y), Tile::new_fill(Color::WHITE), (), &mut commands);
         }
     }
-}
 
-fn test_system(
-    mut tiles: ResMut<Tilemap>,
-    mut resource: ResMut<TestResource>,
-    mut commands: Commands,
-    time: Res<Time>,
-) {
-    resource.timer.tick(time.delta());
-    for _ in 0..resource.timer.times_finished_this_tick() {
-        let chunk_loc = tiles.get_chunk_loc((resource.x, resource.y));
-        if let Some(chunk) = tiles.try_get_chunk(chunk_loc) {
-            chunk.request_update();
-            chunk
-                .set_tile(
-                    (
-                        resource.x.unsigned_abs() as usize % CHUNK_SIZE,
-                        resource.y.unsigned_abs() as usize % CHUNK_SIZE,
-                    ),
-                    Some(Tile::new_fill(Color::WHITE)),
-                    (),
-                    &mut commands,
-                )
-                .unwrap();
-        }
-
-        resource.x += 1;
-        if resource.x >= 48 {
-            resource.x = 0;
-            resource.y += 1;
-        }
-    }
+    // Spawn the tilemap
+    commands.spawn(TilemapBundle {
+        tilemap,
+        ..default()
+    });
 }
